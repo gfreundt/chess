@@ -60,37 +60,18 @@ def me_in_check():
                 my_king_pos = (x,y)  # find where my king is
             elif piece_reviewed / current_turn < 0:
                 all_attacked.append(get_destination_squares(piece_reviewed, (x,y), rev=-1))
-    return True if my_king_pos in [item for s in all_attacked for item in s] else False
-
-
-
+    if my_king_pos in [item for s in all_attacked for item in s]:
+        return True
+    return False
 
 
 def get_square(coords):
     return int(coords[0] / SQUARE_SIZE),int(coords[1] / SQUARE_SIZE)
 
 
-def orthogonal_move(x0, y0, piece):
+def long_move(x0, y0, piece, direction): # queen, rook, bishop
     moves = []
-    for a,b in [(-1, 0), (0, -1), (1, 0), (0, 1)]:
-        x,y = int(a), int(b)
-        while True:
-            new_coords = (x0 + x, y0 + y)
-            if out_of_bounds(new_coords) or (activeBoard[new_coords] / piece) > 0:
-                break
-            elif (activeBoard[new_coords] / piece) < 0:
-                moves.append(new_coords)
-                break
-            else:
-                moves.append(new_coords)
-                x += a
-                y += b
-    return moves
-
-
-def diagonal_move(x0, y0, piece):
-    moves = []
-    for a,b in [(-1, 1), (-1, -1), (1, 1), (1, -1)]:
+    for a,b in [(-1, 0), (0, -1), (1, 0), (0, 1)] if direction == 'orthogonal' else [(-1, 1), (-1, -1), (1, 1), (1, -1)]:
         x,y = int(a), int(b)
         while True:
             new_coords = (x0 + x, y0 + y)
@@ -165,11 +146,11 @@ def get_destination_squares(piece, square, rev=1):
         if abs(piece) == 1:  # king
             moves = king_move(x0, y0, piece)
         elif abs(piece) == 2:  # queen
-            moves = orthogonal_move(x0,y0, piece) + diagonal_move(x0, y0, piece)
+            moves = long_move(x0,y0, piece, 'orthogonal') + long_move(x0, y0, piece, 'diagonal')
         elif abs(piece) == 3:  # rook
-            moves = orthogonal_move(x0,y0, piece)
+            moves = long_move(x0,y0, piece, 'orthogonal')
         elif abs(piece) == 4:  # bishop
-            moves = diagonal_move(x0, y0, piece)
+            moves = long_move(x0, y0, piece, 'diagonal')
         elif abs(piece) == 5:  # knight
             moves = knight_move(x0, y0, piece)
         elif abs(piece) == 6:  # pawn
@@ -268,7 +249,6 @@ while running:
         action, square_clicked = mouse_action()
         if action == 'ESC':
             running = False  # Quit Game
-            action = True
         if action == 'MBD':
             selected_piece = activeBoard[square_clicked]
             if selected_piece:  # clicked on piece, not empty square
@@ -280,15 +260,21 @@ while running:
 
     draw_board()    # highlights possible squares
 
-    while selection and running:  # loops while waiting for CLOSE activity from player
+    selection = False
+    while not selection and running:  # loops while waiting for CLOSE activity from player
+        turn_complete = True
         action, square_clicked = mouse_action()
         if action == 'ESC':
-            action = False  # return to loop to wait for begin activity
+            running = False
         if action == 'MBD':
             if square_clicked in possible_destinations:
+                previousBoard = activeBoard.copy()
                 execute_move(square_clicked_pick, square_clicked)
+                if me_in_check():
+                    activeBoard = previousBoard.copy()
+                    turn_complete = False
                 piece_picked_up = False
-                selection = False
+                selection = True
     
-    print("Check:", me_in_check())
-    current_turn *= -1
+    if turn_complete:
+        current_turn *= -1

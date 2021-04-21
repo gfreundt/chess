@@ -1,3 +1,9 @@
+#TODO: en passant
+#TODO: checkmate
+#TODO: castling no check on spaces travelled ny king
+
+
+
 from time import *
 from itertools import permutations
 import pygame
@@ -60,37 +66,38 @@ def me_in_check():
                 my_king_pos = (x,y)  # find where my king is
             elif piece_reviewed / current_turn < 0:
                 all_attacked.append(get_destination_squares(piece_reviewed, (x,y), rev=-1))
-    return True if my_king_pos in [item for s in all_attacked for item in s] else False
+    if my_king_pos in [item for s in all_attacked for item in s]:
+        return True
+    return False
 
 
+def opp_in_check():
+    all_attacked = []
+    for x in range(8):
+        for y in range(8):
+            piece_reviewed = activeBoard[(x,y)]
+            if piece_reviewed == -1*current_turn:
+                my_king_pos = (x,y)  # find where my king is
+            elif piece_reviewed / -current_turn < 0:
+                all_attacked.append(get_destination_squares(piece_reviewed, (x,y)))
+    if my_king_pos in [item for s in all_attacked for item in s]:
+        return True
+    return False
 
+
+def checkmate():
+    if opp_in_check():
+        pass
+    return False
 
 
 def get_square(coords):
     return int(coords[0] / SQUARE_SIZE),int(coords[1] / SQUARE_SIZE)
 
 
-def orthogonal_move(x0, y0, piece):
+def long_move(x0, y0, piece, direction): # queen, rook, bishop
     moves = []
-    for a,b in [(-1, 0), (0, -1), (1, 0), (0, 1)]:
-        x,y = int(a), int(b)
-        while True:
-            new_coords = (x0 + x, y0 + y)
-            if out_of_bounds(new_coords) or (activeBoard[new_coords] / piece) > 0:
-                break
-            elif (activeBoard[new_coords] / piece) < 0:
-                moves.append(new_coords)
-                break
-            else:
-                moves.append(new_coords)
-                x += a
-                y += b
-    return moves
-
-
-def diagonal_move(x0, y0, piece):
-    moves = []
-    for a,b in [(-1, 1), (-1, -1), (1, 1), (1, -1)]:
+    for a,b in [(-1, 0), (0, -1), (1, 0), (0, 1)] if direction == 'orthogonal' else [(-1, 1), (-1, -1), (1, 1), (1, -1)]:
         x,y = int(a), int(b)
         while True:
             new_coords = (x0 + x, y0 + y)
@@ -115,20 +122,20 @@ def knight_move(x0, y0, piece):
     return moves
 
 
-def king_move(x0, y0, piece):
+def king_move(x0, y0, piece, rev):
     moves=[]
     # one square
     for x,y in [(-1, 1), (-1, -1), (1, 1), (1, -1),(0, 1), (0, -1), (1, 0), (-1, 0)]:
         if not out_of_bounds((x0 + x, y0 + y)) and (activeBoard[(x0 + x, y0 + y)] / piece) <= 0:
             moves.append((x0 + x, y0 + y))
-    return moves
-    # castling long TODO: check for in check or attacked spaces
-    line = 0 if current_turn < 0 else 7
-    if castling[current_turn][0] and all([activeBoard[(x0 - i, line)] == 0 for i in range(1,4)]):
-        moves.append((1, line))
-    # castling short TODO: check for in check or attacked spaces
-    if castling[current_turn][1] and all([activeBoard[(x0 + i, line)] == 0 for i in range(1,3)]):
-        moves.append((6, line))
+    if rev == 1: # skip when evaluating positions for check
+        # castling long TODO: check for in check or attacked spaces
+        line = 0 if current_turn < 0 else 7
+        if castling_left[current_turn] and all([activeBoard[(x0 - i, line)] == 0 for i in range(1,4)]):
+            moves.append((1, line))
+        # castling short TODO: check for in check or attacked spaces
+        if castling_right[current_turn] and all([activeBoard[(x0 + i, line)] == 0 for i in range(1,3)]):
+            moves.append((6, line))
     return moves
 
 
@@ -163,13 +170,13 @@ def get_destination_squares(piece, square, rev=1):
     x0, y0 = square
     if int(piece/abs(piece)) == current_turn * rev:
         if abs(piece) == 1:  # king
-            moves = king_move(x0, y0, piece)
+            moves = king_move(x0, y0, piece, rev)
         elif abs(piece) == 2:  # queen
-            moves = orthogonal_move(x0,y0, piece) + diagonal_move(x0, y0, piece)
+            moves = long_move(x0,y0, piece, 'orthogonal') + long_move(x0, y0, piece, 'diagonal')
         elif abs(piece) == 3:  # rook
-            moves = orthogonal_move(x0,y0, piece)
+            moves = long_move(x0,y0, piece, 'orthogonal')
         elif abs(piece) == 4:  # bishop
-            moves = diagonal_move(x0, y0, piece)
+            moves = long_move(x0, y0, piece, 'diagonal')
         elif abs(piece) == 5:  # knight
             moves = knight_move(x0, y0, piece)
         elif abs(piece) == 6:  # pawn
@@ -179,30 +186,42 @@ def get_destination_squares(piece, square, rev=1):
 
 def execute_move(origin, dest):
     # castling
-    if castling[current_turn] and abs(activeBoard[origin]) == 1:
+    if abs(activeBoard[origin]) == 1:
         x,y = dest
-        if x == 6:
-            print('in1')
+        if x == 6 and castling_right[current_turn]:
             activeBoard[dest] = activeBoard[origin]
             activeBoard[(7,y)], activeBoard[(4,y)] = 0,0
             activeBoard[(5,y)] = 3 * current_turn
-            castling[current_turn] = (False, False)
+            castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
-        elif x == 1:
-            print('in2')
+        elif x == 1 and castling_left[current_turn]:
             activeBoard[dest] = activeBoard[origin]
             activeBoard[(0,y)], activeBoard[(4,y)] = 0,0
             activeBoard[(2,y)] = 3 * current_turn
-            castling[current_turn] = (False, False)
+            castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
 
     # regular move or capture
+    if abs(activeBoard[origin]) == 1:
+        castling_left[current_turn], castling_right[current_turn] = 0, 0
+    elif abs(activeBoard[origin]) == 3 and origin[0] == 7:
+        castling_right[current_turn] = 0
+    elif abs(activeBoard[origin]) == 3 and origin[0] == 0:
+        castling_left[current_turn] = 0
+    
     activeBoard[dest] = activeBoard[origin]
     activeBoard[origin] = 0
+    
     
     # promotion
     if abs(activeBoard[dest]) == 6 and ((current_turn == 1 and dest[1] == 0)  or (current_turn == -1 and dest[1] == 7)):
         activeBoard[dest] = 2*current_turn # queen
+
+
+def end_conditions():
+    if checkmate():
+        return True
+    return False
 
 
 # Paths
@@ -252,7 +271,8 @@ screen = pygame.display.set_mode(SCREEN_SIZE)
 pygame.display.set_caption(SCREEN_CAPTION)
 pygame.display.set_icon(pygame.image.load(SCREEN_ICON))
 start_time = time()
-castling = {-1: (True, True), 1:(True,True)} # Key = color, Value = (Left, Right) Side
+castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
+castling_right = {-1: 1, 1: 1}
 current_turn = 1 # white always starts
 piece_picked_up = False
 
@@ -268,7 +288,6 @@ while running:
         action, square_clicked = mouse_action()
         if action == 'ESC':
             running = False  # Quit Game
-            action = True
         if action == 'MBD':
             selected_piece = activeBoard[square_clicked]
             if selected_piece:  # clicked on piece, not empty square
@@ -280,15 +299,28 @@ while running:
 
     draw_board()    # highlights possible squares
 
-    while selection and running:  # loops while waiting for CLOSE activity from player
+    selection = False
+    while not selection and running:  # loops while waiting for CLOSE activity from player
+        turn_complete = True
         action, square_clicked = mouse_action()
         if action == 'ESC':
-            action = False  # return to loop to wait for begin activity
+            running = False
         if action == 'MBD':
             if square_clicked in possible_destinations:
+                previousBoard = activeBoard.copy()
                 execute_move(square_clicked_pick, square_clicked)
+                if me_in_check():
+                    activeBoard = previousBoard.copy()
+                    turn_complete = False
+                if opp_in_check():
                 piece_picked_up = False
-                selection = False
+                selection = True
     
-    print("Check:", me_in_check())
-    current_turn *= -1
+    if turn_complete:
+        if end_conditions():
+            break
+        current_turn *= -1
+
+
+
+print("The End")

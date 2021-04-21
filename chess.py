@@ -3,7 +3,7 @@
 #TODO: castling no check on spaces travelled ny king
 
 
-
+import chess_board_score as cbs
 from time import *
 from itertools import permutations
 import pygame
@@ -17,7 +17,7 @@ pygame.init()
 
 def load_init_config():
     board = np.zeros((8,8), dtype=int)
-    with open('chess_config_2.txt', mode='r') as file:
+    with open('chess_config.txt', mode='r') as file:
         for p,x,y in csv.reader(file):
             board[int(x)][int(y)] = int(p)
     return board
@@ -287,7 +287,7 @@ while running:
     while not selection:  # loops while waiting for BEGIN activity from player
         action, square_clicked = mouse_action()
         if action == 'ESC':
-            running = False  # Quit Game
+            quit()
         if action == 'MBD':
             selected_piece = activeBoard[square_clicked]
             if selected_piece:  # clicked on piece, not empty square
@@ -304,7 +304,7 @@ while running:
         turn_complete = True
         action, square_clicked = mouse_action()
         if action == 'ESC':
-            running = False
+            quit()
         if action == 'MBD':
             if square_clicked in possible_destinations:
                 previousBoard = activeBoard.copy()
@@ -313,6 +313,7 @@ while running:
                     activeBoard = previousBoard.copy()
                     turn_complete = False
                 if opp_in_check():
+                    pass
                 piece_picked_up = False
                 selection = True
     
@@ -320,6 +321,7 @@ while running:
         if end_conditions():
             break
         current_turn *= -1
+        print(cbs.score(activeBoard, 'kaufman'))
 
 
 

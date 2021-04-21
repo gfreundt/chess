@@ -23,7 +23,7 @@ def load_init_config():
     return board
 
 
-def draw_board():
+def draw_board(moving_piece_coords = (0,0)):
     # Background
     for x in range(8):
         for y in range(8):
@@ -33,19 +33,26 @@ def draw_board():
                 screen.blit(squareClearImage, (x * SQUARE_SIZE, y * SQUARE_SIZE))
             else:
                 screen.blit(squareDarkImage, (x * SQUARE_SIZE, y * SQUARE_SIZE))
-    # Pieces
+    # Fixed Pieces
     for x in range(8):
         for y in range(8):
             coords = ((x * SQUARE_SIZE) + 15, (y * SQUARE_SIZE) + 15)
             image_code = activeBoard[(x,y)]
             if image_code != 0:
                 screen.blit(pieceImages[image_code], coords)
+
+    # Moving Piece
+    if moving_piece_coords != (0,0):
+        moving_piece_coords = [i - SQUARE_SIZE//2 for i in moving_piece_coords]
+        screen.blit(pieceImages[selected_piece], moving_piece_coords)
+
     
     #print(np.flip(np.rot90(activeBoard, k=-1),axis=1))
     pygame.display.update()
 
 
-def mouse_action():
+def player_action():
+    last_mouse_pos = pygame.mouse.get_pos()
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -55,6 +62,10 @@ def mouse_action():
                     return 'ESC', None
             if event.type == MOUSEBUTTONDOWN:
                 return 'MBD', get_square(pygame.mouse.get_pos())
+            if event.type == MOUSEBUTTONUP:
+                return 'MBU', get_square(pygame.mouse.get_pos())
+        if pygame.mouse.get_pos() != last_mouse_pos:
+            return 'MOV', pygame.mouse.get_pos()
 
 
 def me_in_check():
@@ -186,32 +197,31 @@ def get_destination_squares(piece, square, rev=1):
 
 def execute_move(origin, dest):
     # castling
-    if abs(activeBoard[origin]) == 1:
+    if abs(selected_piece) == 1:
         x,y = dest
         if x == 6 and castling_right[current_turn]:
-            activeBoard[dest] = activeBoard[origin]
+            activeBoard[dest] = selected_piece
             activeBoard[(7,y)], activeBoard[(4,y)] = 0,0
             activeBoard[(5,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
         elif x == 1 and castling_left[current_turn]:
-            activeBoard[dest] = activeBoard[origin]
+            activeBoard[dest] = selected_piece
             activeBoard[(0,y)], activeBoard[(4,y)] = 0,0
             activeBoard[(2,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
 
-    # regular move or capture
-    if abs(activeBoard[origin]) == 1:
-        castling_left[current_turn], castling_right[current_turn] = 0, 0
-    elif abs(activeBoard[origin]) == 3 and origin[0] == 7:
-        castling_right[current_turn] = 0
-    elif abs(activeBoard[origin]) == 3 and origin[0] == 0:
-        castling_left[current_turn] = 0
-    
-    activeBoard[dest] = activeBoard[origin]
+    # regular move or capture and turn off castling if appropriate
+    activeBoard[dest] = selected_piece
     activeBoard[origin] = 0
-    
+
+    if abs(selected_piece) == 1:
+        castling_left[current_turn], castling_right[current_turn] = 0, 0
+    elif abs(selected_piece) == 3 and origin[0] == 7:
+        castling_right[current_turn] = 0
+    elif abs(selected_piece) == 3 and origin[0] == 0:
+        castling_left[current_turn] = 0
     
     # promotion
     if abs(activeBoard[dest]) == 6 and ((current_turn == 1 and dest[1] == 0)  or (current_turn == -1 and dest[1] == 7)):
@@ -282,13 +292,14 @@ while running:
 
     draw_board()
 
+    # Action 1: Pick up piece
     possible_destinations = []
     selection = False
     while not selection:  # loops while waiting for BEGIN activity from player
-        action, square_clicked = mouse_action()
+        action, square_clicked = player_action()
         if action == 'ESC':
             quit()
-        if action == 'MBD':
+        elif action == 'MBD':
             selected_piece = activeBoard[square_clicked]
             if selected_piece:  # clicked on piece, not empty square
                 possible_destinations = get_destination_squares(selected_piece, square_clicked)
@@ -297,31 +308,43 @@ while running:
                     square_clicked_pick = square_clicked[:]
                     selection = True
 
-    draw_board()    # highlights possible squares
-
-    selection = False
-    while not selection and running:  # loops while waiting for CLOSE activity from player
-        turn_complete = True
-        action, square_clicked = mouse_action()
+    # Action 2: Move piece
+    activeBoard[square_clicked] = 0   # temporarily erase piece from array
+    button_down = True
+    while button_down:  # loops while waiting for BEGIN activity from player
+        action, moving_piece_coords = player_action()
         if action == 'ESC':
             quit()
-        if action == 'MBD':
-            if square_clicked in possible_destinations:
-                previousBoard = activeBoard.copy()
-                execute_move(square_clicked_pick, square_clicked)
-                if me_in_check():
-                    activeBoard = previousBoard.copy()
-                    turn_complete = False
-                if opp_in_check():
-                    pass
-                piece_picked_up = False
-                selection = True
-    
+        elif action == 'MOV':
+            draw_board(moving_piece_coords = moving_piece_coords)
+        elif action == 'MBU':
+            print(moving_piece_coords)
+            button_down = False
+
+    # Action 3: Drop piece and validate position
+    if moving_piece_coords in possible_destinations:
+        previousBoard = activeBoard.copy()
+        activeBoard[moving_piece_coords] = selected_piece
+        execute_move(square_clicked, moving_piece_coords)
+        turn_complete = True
+        if me_in_check():
+            activeBoard = previousBoard.copy()
+            activeBoard[square_clicked] = selected_piece
+            turn_complete = False
+        if opp_in_check():
+            pass
+        piece_picked_up = False
+    else:
+        activeBoard[square_clicked] = selected_piece
+        turn_complete = False
+
+
+    # Check for end of game - if not next turn
     if turn_complete:
         if end_conditions():
             break
         current_turn *= -1
-        print(cbs.score(activeBoard, 'kaufman'))
+        #print(cbs.score(activeBoard, 'kaufman'))
 
 
 

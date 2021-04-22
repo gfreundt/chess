@@ -69,6 +69,7 @@ def player_action():
 
 
 def me_in_check():
+    in_check = False
     all_attacked = []
     for x in range(8):
         for y in range(8):
@@ -97,8 +98,15 @@ def opp_in_check():
 
 
 def checkmate():
+    moves = []
     if opp_in_check():
-        pass
+        print("You in check bitch")
+        for x in range(8):
+            for y in range(8):
+                if activeBoard[(x,y)] / current_turn > 0:
+                    moves += get_destination_squares(activeBoard[(x,y)], (x,y), checkmate_test=True)
+        print(moves)
+
     return False
 
 
@@ -139,11 +147,11 @@ def king_move(x0, y0, piece, rev):
     for x,y in [(-1, 1), (-1, -1), (1, 1), (1, -1),(0, 1), (0, -1), (1, 0), (-1, 0)]:
         if not out_of_bounds((x0 + x, y0 + y)) and (activeBoard[(x0 + x, y0 + y)] / piece) <= 0:
             moves.append((x0 + x, y0 + y))
-    if rev == 1: # skip when evaluating positions for check
+    if not in_check and rev == 1: # skip when evaluating positions for check
         # castling long TODO: check for in check or attacked spaces
         line = 0 if current_turn < 0 else 7
-        if castling_left[current_turn] and all([activeBoard[(x0 - i, line)] == 0 for i in range(1,4)]):
-            moves.append((1, line))
+        if castling_left[current_turn] and all([activeBoard[(x0 - i, line)] == 0 for i in range(2,4)]):
+            moves.append((2, line))
         # castling short TODO: check for in check or attacked spaces
         if castling_right[current_turn] and all([activeBoard[(x0 + i, line)] == 0 for i in range(1,3)]):
             moves.append((6, line))
@@ -177,9 +185,10 @@ def out_of_bounds(coords):  # coordinates outside board boundaries
         return True
 
 
-def get_destination_squares(piece, square, rev=1):
+def get_destination_squares(piece, square, rev=1, checkmate_test=False):
+    print("**",piece, square)
     x0, y0 = square
-    if int(piece/abs(piece)) == current_turn * rev:
+    if (int(piece/abs(piece)) == current_turn * rev) or checkmate_test:
         if abs(piece) == 1:  # king
             moves = king_move(x0, y0, piece, rev)
         elif abs(piece) == 2:  # queen
@@ -205,10 +214,10 @@ def execute_move(origin, dest):
             activeBoard[(5,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
-        elif x == 1 and castling_left[current_turn]:
+        elif x == 2 and castling_left[current_turn]:
             activeBoard[dest] = selected_piece
             activeBoard[(0,y)], activeBoard[(4,y)] = 0,0
-            activeBoard[(2,y)] = 3 * current_turn
+            activeBoard[(3,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
 
@@ -285,6 +294,7 @@ castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = P
 castling_right = {-1: 1, 1: 1}
 current_turn = 1 # white always starts
 piece_picked_up = False
+in_check = False
 
 # Main Loop
 running = True
@@ -318,7 +328,6 @@ while running:
         elif action == 'MOV':
             draw_board(moving_piece_coords = moving_piece_coords)
         elif action == 'MBU':
-            print(moving_piece_coords)
             button_down = False
 
     # Action 3: Drop piece and validate position
@@ -332,7 +341,9 @@ while running:
             activeBoard[square_clicked] = selected_piece
             turn_complete = False
         if opp_in_check():
-            pass
+            in_check = True
+        else:
+            in_check = False
         piece_picked_up = False
     else:
         activeBoard[square_clicked] = selected_piece
@@ -344,6 +355,7 @@ while running:
         if end_conditions():
             break
         current_turn *= -1
+        #in_check = False
         #print(cbs.score(activeBoard, 'kaufman'))
 
 

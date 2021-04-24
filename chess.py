@@ -1,5 +1,4 @@
 #TODO: en passant
-#TODO: checkmate
 #TODO: castling no check on spaces travelled ny king
 
 
@@ -13,6 +12,11 @@ import os
 import csv
 
 pygame.init()
+
+
+class Game:
+    def __init__(self):
+        self.activeBoard = np.zeros((8,8), dtype=int)
 
 
 def load_init_config():
@@ -37,7 +41,7 @@ def draw_board(moving_piece_coords = (0,0)):
     for x in range(8):
         for y in range(8):
             coords = ((x * SQUARE_SIZE) + 15, (y * SQUARE_SIZE) + 15)
-            image_code = activeBoard[(x,y)]
+            image_code = game.activeBoard[(x,y)]
             if image_code != 0:
                 screen.blit(pieceImages[image_code], coords)
 
@@ -47,7 +51,7 @@ def draw_board(moving_piece_coords = (0,0)):
         screen.blit(pieceImages[selected_piece], moving_piece_coords)
 
     
-    #print(np.flip(np.rot90(activeBoard, k=-1),axis=1))
+    #print(np.flip(np.rot90(game.activeBoard, k=-1),axis=1))
     pygame.display.update()
 
 
@@ -73,7 +77,7 @@ def me_in_check():
     all_attacked = []
     for x in range(8):
         for y in range(8):
-            piece_reviewed = activeBoard[(x,y)]
+            piece_reviewed = game.activeBoard[(x,y)]
             if piece_reviewed == 1*current_turn:
                 my_king_pos = (x,y)  # find where my king is
             elif piece_reviewed / current_turn < 0:
@@ -88,7 +92,7 @@ def opp_in_check():
     my_king_pos = 0 # to avoid error with if
     for x in range(8):
         for y in range(8):
-            piece_reviewed = activeBoard[(x,y)]
+            piece_reviewed = game.activeBoard[(x,y)]
             if piece_reviewed == -1*current_turn:
                 my_king_pos = (x,y)  # find where my king is
             elif piece_reviewed / -current_turn < 0:
@@ -102,23 +106,17 @@ def checkmate():
     if opp_in_check():
         for x in range(8):
             for y in range(8):
-                piece = activeBoard[(x,y)]
+                piece = game.activeBoard[(x,y)]
                 if piece / current_turn < 0:
                     alternatives = get_destination_squares(piece, (x,y), checkmate_test=True)
                     for dest in alternatives:
-                        print((x,y),dest)
-                        previousBoard = activeBoard.copy()
+                        previousBoard = game.activeBoard.copy()
                         execute_move((x,y), dest, piece)
-                        print(np.flip(np.rot90(activeBoard, k=-1),axis=1))
                         if not opp_in_check():
-                            print('move avoids check')
-                            for i,_ in enumerate(previousBoard):
-                                activeBoard[i] = previousBoard[i]    
+                            game.activeBoard = previousBoard.copy()
                             return False
                         else:
-                            for i,_ in enumerate(previousBoard):
-                                activeBoard[i] = previousBoard[i]    
-                            print('still in check')
+                            game.activeBoard = previousBoard.copy()
     else:
         return False
     return True
@@ -134,9 +132,9 @@ def long_move(x0, y0, piece, direction): # queen, rook, bishop
         x,y = int(a), int(b)
         while True:
             new_coords = (x0 + x, y0 + y)
-            if out_of_bounds(new_coords) or (activeBoard[new_coords] / piece) > 0:
+            if out_of_bounds(new_coords) or (game.activeBoard[new_coords] / piece) > 0:
                 break
-            elif (activeBoard[new_coords] / piece) < 0:
+            elif (game.activeBoard[new_coords] / piece) < 0:
                 moves.append(new_coords)
                 break
             else:
@@ -150,7 +148,7 @@ def knight_move(x0, y0, piece):
     moves = []
     for m in permutations((-2, -1, 1, 2), 2):
         x, y = m[0], m[1]
-        if abs(x) - abs(y) != 0 and not out_of_bounds((x0 + x, y0 + y)) and (activeBoard[(x0 + x, y0 + y)] / piece) <= 0:
+        if abs(x) - abs(y) != 0 and not out_of_bounds((x0 + x, y0 + y)) and (game.activeBoard[(x0 + x, y0 + y)] / piece) <= 0:
             moves.append((x0 + x, y0 + y))
     return moves
 
@@ -159,15 +157,15 @@ def king_move(x0, y0, piece, rev):
     moves=[]
     # one square
     for x,y in [(-1, 1), (-1, -1), (1, 1), (1, -1),(0, 1), (0, -1), (1, 0), (-1, 0)]:
-        if not out_of_bounds((x0 + x, y0 + y)) and (activeBoard[(x0 + x, y0 + y)] / piece) <= 0:
+        if not out_of_bounds((x0 + x, y0 + y)) and (game.activeBoard[(x0 + x, y0 + y)] / piece) <= 0:
             moves.append((x0 + x, y0 + y))
     if not in_check and rev == 1: # skip when evaluating positions for check
         # castling long TODO: check for in check or attacked spaces
         line = 0 if current_turn < 0 else 7
-        if castling_left[current_turn] and all([activeBoard[(x0 - i, line)] == 0 for i in range(2,4)]):
+        if castling_left[current_turn] and all([game.activeBoard[(x0 - i, line)] == 0 for i in range(2,4)]):
             moves.append((2, line))
         # castling short TODO: check for in check or attacked spaces
-        if castling_right[current_turn] and all([activeBoard[(x0 + i, line)] == 0 for i in range(1,3)]):
+        if castling_right[current_turn] and all([game.activeBoard[(x0 + i, line)] == 0 for i in range(1,3)]):
             moves.append((6, line))
     return moves
 
@@ -177,16 +175,16 @@ def pawn_move(x0, y0, piece):
     color = -int(piece / abs(piece))
     # one square forward
     new_coords = (x0, y0 + color)
-    if activeBoard[new_coords] == 0:
+    if game.activeBoard[new_coords] == 0:
         moves.append(new_coords)
         # two sqaures foward
         new_coords = (x0, y0 + color*2)
-        if ((color == -1 and y0 == 6)  or (color == 1 and y0 == 1)) and (activeBoard[new_coords] == 0):
+        if ((color == -1 and y0 == 6)  or (color == 1 and y0 == 1)) and (game.activeBoard[new_coords] == 0):
             moves.append(new_coords)
     # capture
     for cap in (-1, 1):
         new_coords = (x0 + cap, y0 + color)
-        if not out_of_bounds(new_coords) and int(activeBoard[new_coords]/color) > 0:
+        if not out_of_bounds(new_coords) and int(game.activeBoard[new_coords]/color) > 0:
             moves.append(new_coords)
     # en passant
     pass
@@ -222,21 +220,21 @@ def execute_move(origin, dest, piece):
     if abs(piece) == 1:
         x,y = dest
         if x == 6 and castling_right[current_turn]:
-            activeBoard[dest] = piece
-            activeBoard[(7,y)], activeBoard[(4,y)] = 0,0
-            activeBoard[(5,y)] = 3 * current_turn
+            game.activeBoard[dest] = piece
+            game.activeBoard[(7,y)], game.activeBoard[(4,y)] = 0,0
+            game.activeBoard[(5,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
         elif x == 2 and castling_left[current_turn]:
-            activeBoard[dest] = piece
-            activeBoard[(0,y)], activeBoard[(4,y)] = 0,0
-            activeBoard[(3,y)] = 3 * current_turn
+            game.activeBoard[dest] = piece
+            game.activeBoard[(0,y)], game.activeBoard[(4,y)] = 0,0
+            game.activeBoard[(3,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
 
     # regular move or capture and turn off castling if appropriate
-    activeBoard[dest] = selected_piece
-    activeBoard[origin] = 0
+    game.activeBoard[dest] = piece
+    game.activeBoard[origin] = 0
 
     if abs(selected_piece) == 1:
         castling_left[current_turn], castling_right[current_turn] = 0, 0
@@ -246,8 +244,8 @@ def execute_move(origin, dest, piece):
         castling_left[current_turn] = 0
     
     # promotion
-    if abs(activeBoard[dest]) == 6 and ((current_turn == 1 and dest[1] == 0)  or (current_turn == -1 and dest[1] == 7)):
-        activeBoard[dest] = 2*current_turn # queen
+    if abs(game.activeBoard[dest]) == 6 and ((current_turn == 1 and dest[1] == 0)  or (current_turn == -1 and dest[1] == 7)):
+        game.activeBoard[dest] = 2*current_turn # queen
 
 
 def end_conditions():
@@ -285,9 +283,10 @@ squareDarkImage = pygame.image.load(FILE_PATH + r"\Chess\Images\dark_empty.jpg")
 squareSelectedImage = pygame.image.load(FILE_PATH + r"\Chess\Images\selected_square.jpg")
 
 # Game Variables
+game = Game()
 pieceCodeGuide = {1:'king', 2:'queen', 3:'rook', 4:'bishop', 5:'knight', 6:'pawn'}
 pieceImages = {piece:pygame.image.load(os.path.join(IMAGE_PATH, f'{"black" if piece < 0 else "white"}_{pieceCodeGuide[abs(piece)]}.png')) for piece in [i for i in range(-6,7) if i != 0]}
-activeBoard = load_init_config()
+game.activeBoard = load_init_config()
 
 
 # Sounds and Music
@@ -303,6 +302,9 @@ activeBoard = load_init_config()
 screen = pygame.display.set_mode(SCREEN_SIZE)
 pygame.display.set_caption(SCREEN_CAPTION)
 pygame.display.set_icon(pygame.image.load(SCREEN_ICON))
+
+
+
 start_time = time()
 castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
 castling_right = {-1: 1, 1: 1}
@@ -324,7 +326,7 @@ while running:
         if action == 'ESC':
             quit()
         elif action == 'MBD':
-            selected_piece = activeBoard[square_clicked]
+            selected_piece = game.activeBoard[square_clicked]
             if selected_piece:  # clicked on piece, not empty square
                 possible_destinations = get_destination_squares(selected_piece, square_clicked)
                 if possible_destinations:  # piece was valid to be picked (right color / turn)
@@ -333,7 +335,7 @@ while running:
                     selection = True
 
     # Action 2: Move piece
-    activeBoard[square_clicked] = 0   # temporarily erase piece from array
+    game.activeBoard[square_clicked] = 0   # temporarily erase piece from array
     button_down = True
     while button_down:  # loops while waiting for BEGIN activity from player
         action, moving_piece_coords = player_action()
@@ -346,13 +348,13 @@ while running:
 
     # Action 3: Drop piece and validate position
     if moving_piece_coords in possible_destinations:
-        previousBoard = activeBoard.copy()
-        activeBoard[moving_piece_coords] = selected_piece
+        previousBoard = game.activeBoard.copy()
+        game.activeBoard[moving_piece_coords] = selected_piece
         execute_move(square_clicked, moving_piece_coords, selected_piece)
         turn_complete = True
         if me_in_check():
-            activeBoard = previousBoard.copy()
-            activeBoard[square_clicked] = selected_piece
+            game.activeBoard = previousBoard.copy()
+            game.activeBoard[square_clicked] = selected_piece
             turn_complete = False
         if opp_in_check():
             in_check = True
@@ -360,7 +362,7 @@ while running:
             in_check = False
         piece_picked_up = False
     else:
-        activeBoard[square_clicked] = selected_piece
+        game.activeBoard[square_clicked] = selected_piece
         turn_complete = False
 
 
@@ -370,9 +372,8 @@ while running:
             break
         current_turn *= -1
         #in_check = False
-        #print(cbs.score(activeBoard, 'kaufman'))
+        #print(cbs.score(game.activeBoard, 'kaufman'))
 
 
-print(np.flip(np.rot90(activeBoard, k=-1),axis=1))
-_ = input("Press to End")
+print(np.flip(np.rot90(game.activeBoard, k=-1),axis=1))
 print("The End")

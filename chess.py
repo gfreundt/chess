@@ -85,6 +85,7 @@ def me_in_check():
 
 def opp_in_check():
     all_attacked = []
+    my_king_pos = 0 # to avoid error with if
     for x in range(8):
         for y in range(8):
             piece_reviewed = activeBoard[(x,y)]
@@ -92,22 +93,35 @@ def opp_in_check():
                 my_king_pos = (x,y)  # find where my king is
             elif piece_reviewed / -current_turn < 0:
                 all_attacked.append(get_destination_squares(piece_reviewed, (x,y)))
-    if my_king_pos in [item for s in all_attacked for item in s]:
+    if (my_king_pos == 0) or (my_king_pos in [item for s in all_attacked for item in s]):
         return True
     return False
 
 
 def checkmate():
-    moves = []
     if opp_in_check():
-        print("You in check bitch")
         for x in range(8):
             for y in range(8):
-                if activeBoard[(x,y)] / current_turn > 0:
-                    moves += get_destination_squares(activeBoard[(x,y)], (x,y), checkmate_test=True)
-        print(moves)
-
-    return False
+                piece = activeBoard[(x,y)]
+                if piece / current_turn < 0:
+                    alternatives = get_destination_squares(piece, (x,y), checkmate_test=True)
+                    for dest in alternatives:
+                        print((x,y),dest)
+                        previousBoard = activeBoard.copy()
+                        execute_move((x,y), dest, piece)
+                        print(np.flip(np.rot90(activeBoard, k=-1),axis=1))
+                        if not opp_in_check():
+                            print('move avoids check')
+                            for i,_ in enumerate(previousBoard):
+                                activeBoard[i] = previousBoard[i]    
+                            return False
+                        else:
+                            for i,_ in enumerate(previousBoard):
+                                activeBoard[i] = previousBoard[i]    
+                            print('still in check')
+    else:
+        return False
+    return True
 
 
 def get_square(coords):
@@ -186,7 +200,6 @@ def out_of_bounds(coords):  # coordinates outside board boundaries
 
 
 def get_destination_squares(piece, square, rev=1, checkmate_test=False):
-    print("**",piece, square)
     x0, y0 = square
     if (int(piece/abs(piece)) == current_turn * rev) or checkmate_test:
         if abs(piece) == 1:  # king
@@ -204,18 +217,18 @@ def get_destination_squares(piece, square, rev=1, checkmate_test=False):
         return moves
 
 
-def execute_move(origin, dest):
+def execute_move(origin, dest, piece):
     # castling
-    if abs(selected_piece) == 1:
+    if abs(piece) == 1:
         x,y = dest
         if x == 6 and castling_right[current_turn]:
-            activeBoard[dest] = selected_piece
+            activeBoard[dest] = piece
             activeBoard[(7,y)], activeBoard[(4,y)] = 0,0
             activeBoard[(5,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
         elif x == 2 and castling_left[current_turn]:
-            activeBoard[dest] = selected_piece
+            activeBoard[dest] = piece
             activeBoard[(0,y)], activeBoard[(4,y)] = 0,0
             activeBoard[(3,y)] = 3 * current_turn
             castling_left[current_turn], castling_right[current_turn] = 0, 0
@@ -239,6 +252,7 @@ def execute_move(origin, dest):
 
 def end_conditions():
     if checkmate():
+        print('checkmate!')
         return True
     return False
 
@@ -334,7 +348,7 @@ while running:
     if moving_piece_coords in possible_destinations:
         previousBoard = activeBoard.copy()
         activeBoard[moving_piece_coords] = selected_piece
-        execute_move(square_clicked, moving_piece_coords)
+        execute_move(square_clicked, moving_piece_coords, selected_piece)
         turn_complete = True
         if me_in_check():
             activeBoard = previousBoard.copy()
@@ -359,5 +373,6 @@ while running:
         #print(cbs.score(activeBoard, 'kaufman'))
 
 
-
+print(np.flip(np.rot90(activeBoard, k=-1),axis=1))
+_ = input("Press to End")
 print("The End")

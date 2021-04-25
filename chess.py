@@ -1,4 +1,3 @@
-#TODO: en passant
 #TODO: castling no check on spaces travelled ny king
 
 
@@ -17,6 +16,13 @@ pygame.init()
 class Game:
     def __init__(self):
         self.activeBoard = np.zeros((8,8), dtype=int)
+        self.en_passant_capture_coords = (0,0)
+
+def find_game_path():
+    paths = (r"D:\Google Drive Backup\Multi-Sync\gui games", r"C:\users\gfreu\Google Drive\Multi-Sync\gui games")
+    for path in paths:
+        if os.path.exists(path):
+            return path
 
 
 def load_init_config():
@@ -172,23 +178,25 @@ def king_move(x0, y0, piece, rev):
 
 def pawn_move(x0, y0, piece):
     moves=[]
-    color = -int(piece / abs(piece))
+    color = int(piece / abs(piece))
     # one square forward
-    new_coords = (x0, y0 + color)
+    new_coords = (x0, y0 - color)
     if game.activeBoard[new_coords] == 0:
         moves.append(new_coords)
-        # two sqaures foward
-        new_coords = (x0, y0 + color*2)
-        if ((color == -1 and y0 == 6)  or (color == 1 and y0 == 1)) and (game.activeBoard[new_coords] == 0):
+        # two sqaures forward
+        new_coords = (x0, y0 - color*2)
+        if ((color == 1 and y0 == 6)  or (color == -1 and y0 == 1)) and (game.activeBoard[new_coords] == 0):
             moves.append(new_coords)
     # capture
     for cap in (-1, 1):
-        new_coords = (x0 + cap, y0 + color)
-        if not out_of_bounds(new_coords) and int(game.activeBoard[new_coords]/color) > 0:
+        new_coords = (x0 + cap, y0 - color)
+        if not out_of_bounds(new_coords) and -int(game.activeBoard[new_coords]/color) > 0:
             moves.append(new_coords)
     # en passant
-    pass
-
+    row = 3 if color == 1 else 4
+    if en_passant[-color] in (x0-1, x0+1) and y0 == row:
+        game.en_passant_capture_coords = (en_passant[-color], row - color)
+        moves.append(game.en_passant_capture_coords)
     return moves
 
 
@@ -232,6 +240,11 @@ def execute_move(origin, dest, piece):
             castling_left[current_turn], castling_right[current_turn] = 0, 0
             return
 
+    # en passant
+    if abs(game.activeBoard[dest]) == 6 and game.en_passant_capture_coords == dest:
+        game.activeBoard[(dest[0], origin[1])] = 0
+        return
+
     # regular move or capture and turn off castling if appropriate
     game.activeBoard[dest] = piece
     game.activeBoard[origin] = 0
@@ -248,6 +261,11 @@ def execute_move(origin, dest, piece):
         game.activeBoard[dest] = 2*current_turn # queen
 
 
+    # evaluate for en passant activated after move
+    if abs(game.activeBoard[dest]) == 6 and abs(origin[1]-dest[1]) == 2:
+        en_passant[current_turn] = origin[0]
+
+
 def end_conditions():
     if checkmate():
         print('checkmate!')
@@ -256,7 +274,7 @@ def end_conditions():
 
 
 # Paths
-FILE_PATH = r"D:\Google Drive Backup\Multi-Sync\gui games"
+FILE_PATH = find_game_path()
 IMAGE_PATH = os.path.join(FILE_PATH, "Chess", "Images")
 
 # Colors
@@ -275,6 +293,7 @@ SCREEN_SIZE = (SQUARE_SIZE * 8, SQUARE_SIZE * 8)
 SCREEN_CAPTION = "Chess"
 SCREEN_ICON = FILE_PATH + r"\_Resources\Images\G_logo.png"
 SCREEN_POS = (2500, 30)
+#SCREEN_POS = (50,50)
 os.environ['SDL_VIDEO_WINDOW_POS'] = f"{SCREEN_POS[0]},{SCREEN_POS[1]}"
 
 # Saved Image Paths and Sizes
@@ -308,6 +327,7 @@ pygame.display.set_icon(pygame.image.load(SCREEN_ICON))
 start_time = time()
 castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
 castling_right = {-1: 1, 1: 1}
+en_passant = {-1: -1, 1: -1} # Key = color, Value = -1 Not available | 0-7 column where en passant available
 current_turn = 1 # white always starts
 piece_picked_up = False
 in_check = False
@@ -319,6 +339,7 @@ while running:
     draw_board()
 
     # Action 1: Pick up piece
+    print(en_passant)
     possible_destinations = []
     selection = False
     while not selection:  # loops while waiting for BEGIN activity from player
@@ -371,6 +392,7 @@ while running:
         if end_conditions():
             break
         current_turn *= -1
+        en_passant[current_turn] = -1 # clean opportunity
         #in_check = False
         #print(cbs.score(game.activeBoard, 'kaufman'))
 

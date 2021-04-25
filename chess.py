@@ -260,7 +260,6 @@ def execute_move(origin, dest, piece):
     if abs(game.activeBoard[dest]) == 6 and ((game.current_turn == 1 and dest[1] == 0)  or (game.current_turn == -1 and dest[1] == 7)):
         game.activeBoard[dest] = 2*game.current_turn  # always promote to queen
 
-
     # evaluate for en passant activated after move
     if abs(game.activeBoard[dest]) == 6 and abs(origin[1]-dest[1]) == 2:
         game.en_passant[game.current_turn] = origin[0]

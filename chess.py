@@ -1,5 +1,9 @@
 #TODO: castling no check on spaces travelled by king
+#TODO: stalemate
 
+
+import sys
+sys.path.append('..') # add gui_games directory to path (allows import of gui_games_setup module)
 import chess_board_score as cbs
 import gui_games_setup as setup
 from time import *
@@ -9,10 +13,8 @@ from pygame.locals import *
 import numpy as np
 import os
 import csv
-import sys
 
 pygame.init()
-
 
 class Game:
     def __init__(self):
@@ -28,11 +30,11 @@ class Game:
         activate_fonts = [['Title', 'Arial', 48, 'bold', 'noitalic'], ['SubTitle', 'Arial', 24, 'bold', 'noitalic'], ['Text', 'Calibri', 16, 'nobold', 'noitalic']]
         self.FONTS = setup.fonts(activate_fonts)
         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{self.SCREEN_POS[0]},{self.SCREEN_POS[1]}"
-
         self.squareClearImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\clear_empty.jpg")
         self.squareDarkImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\dark_empty.jpg")
         self.squareSelectedImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\selected_square.jpg")
-
+        pcg = {1:'king', 2:'queen', 3:'rook', 4:'bishop', 5:'knight', 6:'pawn'}
+        self.pieceImages = {piece:pygame.image.load(os.path.join(self.IMAGE_PATH, f'{"black" if piece < 0 else "white"}_{pcg[abs(piece)]}.png')) for piece in [i for i in range(-6,7) if i != 0]}
         self.castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
         self.castling_right = {-1: 1, 1: 1}
         self.en_passant = {-1: -1, 1: -1} # Key = color, Value = -1 Not available | 0-7 column where en passant available
@@ -69,12 +71,11 @@ def draw_board(moving_piece_coords = (0,0)):
             coords = ((x * game.SQUARE_SIZE) + 15, (y * game.SQUARE_SIZE) + 15)
             image_code = game.activeBoard[(x,y)]
             if image_code != 0:
-                screen.blit(pieceImages[image_code], coords)
+                screen.blit(game.pieceImages[image_code], coords)
     # Moving Piece
     if moving_piece_coords != (0,0):
         moving_piece_coords = [i - game.SQUARE_SIZE//2 for i in moving_piece_coords]
-        screen.blit(pieceImages[selected_piece], moving_piece_coords)
-
+        screen.blit(game.pieceImages[selected_piece], moving_piece_coords)
     pygame.display.update()
 
 
@@ -125,24 +126,6 @@ def opp_in_check():
     return False
 
 
-def checkmate():
-    if opp_in_check():
-        for x in range(8):
-            for y in range(8):
-                piece = game.activeBoard[(x,y)]
-                if piece / game.current_turn < 0:
-                    alternatives = get_destination_squares(piece, (x,y), checkmate_test=True)
-                    for dest in alternatives:
-                        previousBoard = game.activeBoard.copy()
-                        execute_move((x,y), dest, piece)
-                        if not opp_in_check():
-                            game.activeBoard = previousBoard.copy()
-                            return False
-                        else:
-                            game.activeBoard = previousBoard.copy()
-    else:
-        return False
-    return True
 
 
 def get_square(coords):
@@ -267,15 +250,15 @@ def execute_move(origin, dest, piece):
     game.activeBoard[origin] = 0
 
     if abs(selected_piece) == 1:
-        game.castling_left[game.current_turn], game.castling_right[game.current_turn] = 0, 0
-    elif abs(selected_piece) == 3 and origin[0] == 7:
+        game.castling_left[game.current_turn], game.castling_right[game.current_turn] = 0, 0  # king move = no castling allowed
+    elif abs(selected_piece) == 3 and origin[0] == 7:  # rook move, only that side castling not allowed
         game.castling_right[game.current_turn] = 0
-    elif abs(selected_piece) == 3 and origin[0] == 0:
+    elif abs(selected_piece) == 3 and origin[0] == 0:  # rook move, only that side castling not allowed
         game.castling_left[game.current_turn] = 0
     
     # promotion
     if abs(game.activeBoard[dest]) == 6 and ((game.current_turn == 1 and dest[1] == 0)  or (game.current_turn == -1 and dest[1] == 7)):
-        game.activeBoard[dest] = 2*game.current_turn # queen
+        game.activeBoard[dest] = 2*game.current_turn  # always promote to queen
 
 
     # evaluate for en passant activated after move
@@ -283,40 +266,63 @@ def execute_move(origin, dest, piece):
         game.en_passant[game.current_turn] = origin[0]
 
 
+
+def checkmate():
+    if opp_in_check():
+        for x in range(8):
+            for y in range(8):
+                piece = game.activeBoard[(x,y)]
+                if piece / game.current_turn < 0:
+                    alternatives = get_destination_squares(piece, (x,y), checkmate_test=True)
+                    for dest in alternatives:
+                        previousBoard = game.activeBoard.copy()
+                        execute_move((x,y), dest, piece)
+                        if not opp_in_check():
+                            game.activeBoard = previousBoard.copy()
+                            return False
+                        else:
+                            game.activeBoard = previousBoard.copy()
+    else:
+        return False
+    return True
+
+
+def stalemate():
+    return False
+
+
+def threefold_repetition():
+    return False
+
+
 def end_conditions():
     if checkmate():
         print('checkmate!')
+        game.winner = int(game.current_turn)
         return True
+    elif stalemate():
+        print('stalemate!')
+        game.winner = 0  # draw
+        return True
+    elif threefold_repetition():
+        game.winner = 0  # draw
+        print('stalemate!')
     return False
 
 
 
 # Game Variables
 game = Game()
-pieceCodeGuide = {1:'king', 2:'queen', 3:'rook', 4:'bishop', 5:'knight', 6:'pawn'}
-pieceImages = {piece:pygame.image.load(os.path.join(game.IMAGE_PATH, f'{"black" if piece < 0 else "white"}_{pieceCodeGuide[abs(piece)]}.png')) for piece in [i for i in range(-6,7) if i != 0]}
 game.activeBoard = load_init_config()
 
-
-# Init Game Basics
-# pygame.mixer.music.play(loops=-1)
+# Init Screen
 screen = pygame.display.set_mode(game.SCREEN_SIZE)
 pygame.display.set_caption(game.SCREEN_CAPTION)
 pygame.display.set_icon(pygame.image.load(game.SCREEN_ICON))
 
-
-
-start_time = time()
-game.castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
-game.castling_right = {-1: 1, 1: 1}
-game.en_passant = {-1: -1, 1: -1} # Key = color, Value = -1 Not available | 0-7 column where en passant available
-game.current_turn = 1 # white always starts
-game.in_check = False
-
 # Main Loop
 running = True
 while running:
-
     draw_board()
 
     # Action 1: Pick up piece
@@ -342,7 +348,7 @@ while running:
         if action == 'ESC':
             quit()
         elif action == 'MOV':
-            draw_board(moving_piece_coords = moving_piece_coords)
+            draw_board(moving_piece_coords)
         elif action == 'MBU':
             button_down = False
 
@@ -363,7 +369,6 @@ while running:
     else:
         game.activeBoard[square_clicked] = selected_piece
         turn_complete = False
-
 
     # Check for end of game - if not next turn
     if turn_complete:

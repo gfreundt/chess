@@ -6,7 +6,9 @@ import sys
 sys.path.append('..') # add gui_games directory to path (allows import of gui_games_setup module)
 import chess_board_score as cbs
 import gui_games_setup as setup
-from time import *
+import gui_games_network as network
+import socket
+import time
 from itertools import permutations
 import pygame
 from pygame.locals import *
@@ -18,6 +20,8 @@ pygame.init()
 
 class Game:
     def __init__(self):
+        load_options = [i.upper() for i in sys.argv]
+        self.net = network.NetworkClient() if 'NONET' not in load_options else '--'
         self.activeBoard = np.zeros((8,8), dtype=int)
         self.en_passant_capture_coords = (0,0)
         self.FILE_PATH = setup.find_game_path()
@@ -25,14 +29,13 @@ class Game:
         self.COLORS = setup.colors()
         self.SQUARE_SIZE = 108
         self.SCREEN_SIZE = (self.SQUARE_SIZE * 8, self.SQUARE_SIZE * 8)
-        self.SCREEN_CAPTION = sys.argv[0].title()
+        self.SCREEN_CAPTION = f'Chess - Player {self.net.id}'
         self.SCREEN_ICON, self.SCREEN_POS = setup.screen(self.FILE_PATH)
         activate_fonts = [['Title', 'Arial', 48, 'bold', 'noitalic'], ['SubTitle', 'Arial', 24, 'bold', 'noitalic'], ['Text', 'Calibri', 16, 'nobold', 'noitalic']]
         self.FONTS = setup.fonts(activate_fonts)
         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{self.SCREEN_POS[0]},{self.SCREEN_POS[1]}"
         self.squareClearImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\clear_empty.jpg")
         self.squareDarkImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\dark_empty.jpg")
-        self.squareSelectedImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\selected_square.jpg")
         pcg = {1:'king', 2:'queen', 3:'rook', 4:'bishop', 5:'knight', 6:'pawn'}
         self.pieceImages = {piece:pygame.image.load(os.path.join(self.IMAGE_PATH, f'{"black" if piece < 0 else "white"}_{pcg[abs(piece)]}.png')) for piece in [i for i in range(-6,7) if i != 0]}
         self.castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
@@ -55,6 +58,13 @@ def load_init_config():
         for p,x,y in csv.reader(file):
             board[int(x)][int(y)] = int(p)
     return board
+
+
+def my_turn():
+    if int(game.net.id) % 2 == 0:
+        return False
+    else:
+        return True
 
 
 def draw_board(moving_piece_coords = (0,0)):
@@ -124,8 +134,6 @@ def opp_in_check():
     if (my_king_pos == 0) or (my_king_pos in [item for s in all_attacked for item in s]):
         return True
     return False
-
-
 
 
 def get_square(coords):
@@ -309,8 +317,28 @@ def end_conditions():
     return False
 
 
+def array_to_string(n):
+    r = ''
+    for x in range(8):
+        for y in range(8):
+            s = str(n[(x,y)])
+            if len(s) == 1:
+                s = '0' + s
+            r += s
+    return r
+
+def string_to_array(s):
+    a = []
+    for x in range(8):
+        line = []
+        for y in range(8):
+            line.append(int(s[x*16+y*2:x*16+y*2+2]))
+        a.append(line)
+    return np.array(a, dtype=int)
+
 
 # Game Variables
+
 game = Game()
 game.activeBoard = load_init_config()
 
@@ -324,59 +352,69 @@ running = True
 while running:
     draw_board()
 
-    # Action 1: Pick up piece
-    possible_destinations = []
-    selection = False
-    while not selection:  # loops while waiting for BEGIN activity from player
-        action, square_clicked = player_action()
-        if action == 'ESC':
-            quit()
-        elif action == 'MBD':
-            selected_piece = game.activeBoard[square_clicked]
-            if selected_piece:  # clicked on piece, not empty square
-                possible_destinations = get_destination_squares(selected_piece, square_clicked)
-                if possible_destinations:  # piece was valid to be picked (right color / turn)
-                    square_clicked_pick = square_clicked[:]
-                    selection = True
+    if my_turn():
 
-    # Action 2: Move piece
-    game.activeBoard[square_clicked] = 0   # temporarily erase piece from array
-    button_down = True
-    while button_down:  # loops while waiting for BEGIN activity from player
-        action, moving_piece_coords = player_action()
-        if action == 'ESC':
-            quit()
-        elif action == 'MOV':
-            draw_board(moving_piece_coords)
-        elif action == 'MBU':
-            button_down = False
+        # Action 1: Pick up piece
+        possible_destinations = []
+        selection = False
+        while not selection:  # loops while waiting for BEGIN activity from player
+            action, square_clicked = player_action()
+            if action == 'ESC':
+                quit()
+            elif action == 'MBD':
+                selected_piece = game.activeBoard[square_clicked]
+                if selected_piece:  # clicked on piece, not empty square
+                    possible_destinations = get_destination_squares(selected_piece, square_clicked)
+                    if possible_destinations:  # piece was valid to be picked (right color / turn)
+                        square_clicked_pick = square_clicked[:]
+                        selection = True
 
-    # Action 3: Drop piece and validate position
-    if moving_piece_coords in possible_destinations:
-        previousBoard = game.activeBoard.copy()
-        game.activeBoard[moving_piece_coords] = selected_piece
-        execute_move(square_clicked, moving_piece_coords, selected_piece)
-        turn_complete = True
-        if me_in_check():
-            game.activeBoard = previousBoard.copy()
+        # Action 2: Move piece
+        game.activeBoard[square_clicked] = 0   # temporarily erase piece from array
+        button_down = True
+        while button_down:  
+            action, moving_piece_coords = player_action()
+            if action == 'ESC':
+                quit()
+            elif action == 'MOV':
+                draw_board(moving_piece_coords)
+            elif action == 'MBU':
+                button_down = False
+
+        # Action 3: Drop piece and validate position
+        if moving_piece_coords in possible_destinations:
+            previousBoard = game.activeBoard.copy()
+            game.activeBoard[moving_piece_coords] = selected_piece
+            execute_move(square_clicked, moving_piece_coords, selected_piece)
+            turn_complete = True
+            if me_in_check():
+                game.activeBoard = previousBoard.copy()
+                game.activeBoard[square_clicked] = selected_piece
+                turn_complete = False
+            if opp_in_check():
+                game.in_check = True
+            else:
+                game.in_check = False
+        else:
             game.activeBoard[square_clicked] = selected_piece
             turn_complete = False
-        if opp_in_check():
-            game.in_check = True
-        else:
-            game.in_check = False
+
+        # Check for end of game - if not next turn
+        if turn_complete:
+            if end_conditions():
+                break
+            game.current_turn *= -1
+            game.en_passant[game.current_turn] = -1 # clean opportunity
+            #print(cbs.score(game.activeBoard, 'kaufman'))
     else:
-        game.activeBoard[square_clicked] = selected_piece
-        turn_complete = False
-
-    # Check for end of game - if not next turn
-    if turn_complete:
-        if end_conditions():
-            break
-        game.current_turn *= -1
-        game.en_passant[game.current_turn] = -1 # clean opportunity
-        #print(cbs.score(game.activeBoard, 'kaufman'))
-
+        data_to_send = array_to_string(game.activeBoard)
+        game.net.client.sendall(data_to_send.encode())
+        print(f'Client sent: {data_to_send}')
+        time.sleep(3)
+        server_reply = game.net.client.recv(256).decode()
+        print(f'Server replies: {server_reply}')
+        time.sleep(3)
+        game.activeBoard = string_to_array(server_reply)
 
 draw_board()
 while True:

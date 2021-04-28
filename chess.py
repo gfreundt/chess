@@ -3,7 +3,7 @@
 
 
 import sys
-sys.path.append('..') # add gui_games directory to path (allows import of gui_games_setup module)
+sys.path.append('..') # add gui_games directory to path (allows import of gui_games modules)
 import chess_board_score as cbs
 import gui_games_setup as setup
 import gui_games_network as network
@@ -21,7 +21,7 @@ pygame.init()
 class Game:
     def __init__(self):
         load_options = [i.upper() for i in sys.argv]
-        self.net = network.NetworkClient() if 'NONET' not in load_options else '--'
+        self.net = network.NetworkClient() if 'NONET' not in load_options else ''
         self.activeBoard = np.zeros((8,8), dtype=int)
         self.en_passant_capture_coords = (0,0)
         self.FILE_PATH = setup.find_game_path()
@@ -61,10 +61,10 @@ def load_init_config():
 
 
 def my_turn():
-    if int(game.net.id) % 2 == 0:
-        return False
-    else:
+    if (1,-1)[int(game.net.id)%2] == game.current_turn:
         return True
+    else:
+        return False
 
 
 def draw_board(moving_piece_coords = (0,0)):
@@ -203,8 +203,8 @@ def pawn_move(x0, y0, piece):
     # en passant
     row = 3 if color == 1 else 4
     if game.en_passant[-color] in (x0-1, x0+1) and y0 == row:
-        game.game.en_passant_capture_coords = (game.en_passant[-color], row - color)
-        moves.append(game.game.en_passant_capture_coords)
+        game.en_passant_capture_coords = (game.en_passant[-color], row - color)
+        moves.append(game.en_passant_capture_coords)
     return moves
 
 
@@ -313,7 +313,7 @@ def end_conditions():
         return True
     elif threefold_repetition():
         game.winner = 0  # draw
-        print('stalemate!')
+        print('draw!')
     return False
 
 
@@ -325,7 +325,7 @@ def array_to_string(n):
             if len(s) == 1:
                 s = '0' + s
             r += s
-    return r
+    return r + f'{game.current_turn:02d}'
 
 def string_to_array(s):
     a = []
@@ -334,7 +334,7 @@ def string_to_array(s):
         for y in range(8):
             line.append(int(s[x*16+y*2:x*16+y*2+2]))
         a.append(line)
-    return np.array(a, dtype=int)
+    return np.array(a, dtype=int), int(s[-2:])
 
 
 # Game Variables
@@ -402,19 +402,22 @@ while running:
         # Check for end of game - if not next turn
         if turn_complete:
             if end_conditions():
+                data_to_send = 'gameover'
+                game.net.client.sendall(data_to_send.encode())
                 break
             game.current_turn *= -1
             game.en_passant[game.current_turn] = -1 # clean opportunity
+            # Network operations
+            data_to_send = array_to_string(game.activeBoard)
+            game.net.client.sendall(data_to_send.encode())
+            server_reply = game.net.client.recv(256).decode().strip() # reply not used by client
             #print(cbs.score(game.activeBoard, 'kaufman'))
     else:
-        data_to_send = array_to_string(game.activeBoard)
+        data_to_send = 'wait'
         game.net.client.sendall(data_to_send.encode())
-        print(f'Client sent: {data_to_send}')
-        time.sleep(3)
-        server_reply = game.net.client.recv(256).decode()
-        print(f'Server replies: {server_reply}')
-        time.sleep(3)
-        game.activeBoard = string_to_array(server_reply)
+        server_reply = game.net.client.recv(256).decode().strip()
+        if server_reply and ' ' not in server_reply:
+            game.activeBoard, game.current_turn = string_to_array(server_reply)
 
 draw_board()
 while True:

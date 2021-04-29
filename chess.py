@@ -1,7 +1,7 @@
 #TODO: castling no check on spaces travelled by king
 #TODO: stalemate
 
-
+from PIL import Image
 import sys
 sys.path.append('..') # add gui_games directory to path (allows import of gui_games modules)
 import chess_board_score as cbs
@@ -20,29 +20,48 @@ pygame.init()
 
 class Game:
     def __init__(self):
-        load_options = [i.upper() for i in sys.argv]
-        self.net = network.NetworkClient() if 'NONET' not in load_options else ''
-        self.activeBoard = np.zeros((8,8), dtype=int)
-        self.en_passant_capture_coords = (0,0)
+        self.load_options()
+        self.net = network.NetworkClient()
         self.FILE_PATH = setup.find_game_path()
         self.IMAGE_PATH = os.path.join(self.FILE_PATH, "Chess", "Images")
         self.COLORS = setup.colors()
-        self.SQUARE_SIZE = 108
+        self.SQUARE_SIZE = int(27 * self.scale) 
         self.SCREEN_SIZE = (self.SQUARE_SIZE * 8, self.SQUARE_SIZE * 8)
         self.SCREEN_CAPTION = f'Chess - Player {self.net.id}'
-        self.SCREEN_ICON, self.SCREEN_POS = setup.screen(self.FILE_PATH)
-        activate_fonts = [['Title', 'Arial', 48, 'bold', 'noitalic'], ['SubTitle', 'Arial', 24, 'bold', 'noitalic'], ['Text', 'Calibri', 16, 'nobold', 'noitalic']]
-        self.FONTS = setup.fonts(activate_fonts)
-        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{self.SCREEN_POS[0]},{self.SCREEN_POS[1]}"
+        self.SCREEN_ICON = setup.screen(self.FILE_PATH)
+        self.FONTS = setup.fonts(['Small Text', 'Calibri', 12, 'nobold', 'noitalic'])
+        self.load_images()
+        self.game_variables()
+        
+
+    def load_options(self):
+        load_options = [i.upper() for i in sys.argv]
+        scales = (['MICRO',1], ['MINI',2], ['NORMAL',3], ['LARGE',4])
+        for scale in scales:
+            if scale[0] in load_options:
+                self.scale = scale[1]
+                break
+            self.scale = 3 # default
+
+    def load_images(self):
         self.squareClearImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\clear_empty.jpg")
         self.squareDarkImage = pygame.image.load(self.FILE_PATH + r"\Chess\Images\dark_empty.jpg")
         pcg = {1:'king', 2:'queen', 3:'rook', 4:'bishop', 5:'knight', 6:'pawn'}
-        self.pieceImages = {piece:pygame.image.load(os.path.join(self.IMAGE_PATH, f'{"black" if piece < 0 else "white"}_{pcg[abs(piece)]}.png')) for piece in [i for i in range(-6,7) if i != 0]}
+        self.pieceImages = {}
+        for piece in range(-6,7):
+            if piece != 0:
+                img = Image.open(os.path.join(self.IMAGE_PATH, f'{"black" if piece < 0 else "white"}_{pcg[abs(piece)]}.png')).resize((20*self.scale, 20*self.scale), Image.ANTIALIAS)
+                self.pieceImages.update({piece:pygame.image.fromstring(img.tobytes(), img.size, img.mode)})
+
+    def game_variables(self):
+        self.activeBoard = np.zeros((8,8), dtype=int)
+        self.en_passant_capture_coords = (0,0)
         self.castling_left = {-1: 1, 1: 1} # Key = color, Value = (Left, Right) Side | -1 = Previous Turn Castle Not Available, 0 = Castle Not Available Permanently, 1 = Castle Available
         self.castling_right = {-1: 1, 1: 1}
         self.en_passant = {-1: -1, 1: -1} # Key = color, Value = -1 Not available | 0-7 column where en passant available
         self.current_turn = 1 # white always starts
         self.in_check = False
+
 
 
 def find_game_path():
@@ -78,7 +97,7 @@ def draw_board(moving_piece_coords = (0,0)):
     # Fixed Pieces
     for x in range(8):
         for y in range(8):
-            coords = ((x * game.SQUARE_SIZE) + 15, (y * game.SQUARE_SIZE) + 15)
+            coords = ((x * game.SQUARE_SIZE) + 4*game.scale, (y * game.SQUARE_SIZE) + 4*game.scale)
             image_code = game.activeBoard[(x,y)]
             if image_code != 0:
                 screen.blit(game.pieceImages[image_code], coords)

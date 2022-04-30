@@ -41,7 +41,26 @@ class Game:
         self.COLORS = setup.colors()
         self.SQUARE_SIZE = int(27 * self.scale)
         self.MAIN_SCREEN_SIZE = (self.SQUARE_SIZE * 8, self.SQUARE_SIZE * 8)
-        self.SECONDARY_SCREEN_SIZE = (100 * self.scale, 100 * self.scale)
+        self.X_OFFSET = self.MAIN_SCREEN_SIZE[0] // 8
+        self.Y_OFFSET = self.MAIN_SCREEN_SIZE[1] // 8
+        # self.VERTICAL_EDGE_SCREEN_SIZE = (
+        #     self.MAIN_SCREEN_SIZE[0],
+        #     self.MAIN_SCREEN_SIZE[1] // 8,
+        # )
+        self.SIDE_SCREEN_SIZE = (
+            self.MAIN_SCREEN_SIZE[0] // 4,
+            self.MAIN_SCREEN_SIZE[1] + self.Y_OFFSET * 2,
+        )
+        # self.HORIZONTAL_EDGE_SCREEN_SIZE = (
+        #     self.MAIN_SCREEN_SIZE[0] // 8,
+        #     self.SIDE_SCREEN_SIZE[1],
+        # )
+
+        self.SCREEN_SIZE = (
+            self.X_OFFSET + self.MAIN_SCREEN_SIZE[0] + self.SIDE_SCREEN_SIZE[0],
+            self.MAIN_SCREEN_SIZE[1] + self.Y_OFFSET * 2,
+        )
+
         self.SCREEN_CAPTION = "Chess"
         self.SCREEN_ICON = setup.screen_icon(self.FILE_PATH)
         self.FONTS = setup.fonts(["Small Text", "Calibri", 12, "nobold", "noitalic"])
@@ -62,11 +81,13 @@ class Game:
         self.TEST_MODE = True if "TEST" in load_options else False
 
     def load_images(self):
-        self.squareClearImage = pygame.image.load(
-            self.FILE_PATH + r"\Chess\Images\clear_empty.jpg"
+        self.squareClearImage = pygame.transform.scale(
+            pygame.image.load(self.FILE_PATH + r"\Chess\Images\clear_empty.jpg"),
+            (self.SQUARE_SIZE, self.SQUARE_SIZE),
         )
-        self.squareDarkImage = pygame.image.load(
-            self.FILE_PATH + r"\Chess\Images\dark_empty.jpg"
+        self.squareDarkImage = pygame.transform.scale(
+            pygame.image.load(self.FILE_PATH + r"\Chess\Images\dark_empty.jpg"),
+            (self.SQUARE_SIZE, self.SQUARE_SIZE),
         )
         pcg = {1: "king", 2: "queen", 3: "rook", 4: "bishop", 5: "knight", 6: "pawn"}
         self.pieceImages = {}
@@ -115,18 +136,26 @@ def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
         for y in range(8):
             if (x + y) % 2 == 0:
                 main_screen.blit(
-                    game.squareClearImage, (x * game.SQUARE_SIZE, y * game.SQUARE_SIZE)
+                    game.squareClearImage,
+                    (
+                        x * game.SQUARE_SIZE + game.X_OFFSET,
+                        y * game.SQUARE_SIZE + game.Y_OFFSET,
+                    ),
                 )
             else:
                 main_screen.blit(
-                    game.squareDarkImage, (x * game.SQUARE_SIZE, y * game.SQUARE_SIZE)
+                    game.squareDarkImage,
+                    (
+                        x * game.SQUARE_SIZE + game.X_OFFSET,
+                        y * game.SQUARE_SIZE + game.Y_OFFSET,
+                    ),
                 )
     # Fixed Pieces
     for x in range(8):
         for y in range(8):
             coords = (
-                (x * game.SQUARE_SIZE) + 4 * game.scale,
-                (y * game.SQUARE_SIZE) + 4 * game.scale,
+                (x * game.SQUARE_SIZE) + 4 * game.scale + game.X_OFFSET,
+                (y * game.SQUARE_SIZE) + 4 * game.scale + game.Y_OFFSET,
             )
             image_code = game.activeBoard[(x, y)]
             if image_code != 0:
@@ -190,7 +219,10 @@ def opp_in_check():
 
 
 def get_square(coords):
-    return int(coords[0] / game.SQUARE_SIZE), int(coords[1] / game.SQUARE_SIZE)
+    return (
+        (coords[0] - game.X_OFFSET) // game.SQUARE_SIZE,
+        (coords[1] - game.Y_OFFSET) // game.SQUARE_SIZE,
+    )
 
 
 def long_move(x0, y0, piece, direction):  # queen, rook, bishop
@@ -538,7 +570,6 @@ def main():
                     if (
                         possible_destinations
                     ):  # piece was valid to be picked (right color / turn)
-                        square_clicked_pick = square_clicked[:]
                         selection = True
 
         # Action 2: Move piece
@@ -603,7 +634,7 @@ game.activeBoard = load_init_config()
 
 # Init Screen
 os.environ["SDL_VIDEO_WINDOW_POS"] = "50,50"
-main_screen = pygame.display.set_mode(game.MAIN_SCREEN_SIZE)
+main_screen = pygame.display.set_mode(game.SCREEN_SIZE)
 pygame.display.set_caption(game.SCREEN_CAPTION)
 pygame.display.set_icon(pygame.image.load(game.SCREEN_ICON))
 

@@ -11,6 +11,9 @@
 
 from PIL import Image
 import sys
+import datetime
+from datetime import datetime as dt, timedelta as td
+from copy import deepcopy as copy
 
 # import chess_board_score as cbs
 import gui_games_setup as setup
@@ -38,7 +41,10 @@ class Game:
         self.load_options()
         self.FILE_PATH = setup.find_game_path()
         self.IMAGE_PATH = os.path.join(self.FILE_PATH, "chess", "Images")
+
+        # screen parameters
         self.COLORS = setup.colors()
+        self.SCREEN_BG_COLOR = self.COLORS["GRAY"]
         self.SQUARE_SIZE = int(27 * self.scale)
         self.MAIN_SCREEN_SIZE = (self.SQUARE_SIZE * 8, self.SQUARE_SIZE * 8)
         self.X_OFFSET = self.MAIN_SCREEN_SIZE[0] // 8
@@ -48,23 +54,24 @@ class Game:
         #     self.MAIN_SCREEN_SIZE[1] // 8,
         # )
         self.SIDE_SCREEN_SIZE = (
-            self.MAIN_SCREEN_SIZE[0] // 4,
+            self.MAIN_SCREEN_SIZE[0] // 2,
             self.MAIN_SCREEN_SIZE[1] + self.Y_OFFSET * 2,
         )
         # self.HORIZONTAL_EDGE_SCREEN_SIZE = (
         #     self.MAIN_SCREEN_SIZE[0] // 8,
         #     self.SIDE_SCREEN_SIZE[1],
         # )
-
         self.SCREEN_SIZE = (
             self.X_OFFSET + self.MAIN_SCREEN_SIZE[0] + self.SIDE_SCREEN_SIZE[0],
             self.MAIN_SCREEN_SIZE[1] + self.Y_OFFSET * 2,
         )
-
         self.SCREEN_CAPTION = "Chess"
         self.SCREEN_ICON = setup.screen_icon(self.FILE_PATH)
         self.FONTS = setup.fonts(["Small Text", "Calibri", 12, "nobold", "noitalic"])
+
+        # other parameters
         self.MOVE_LOG_INDEX = {1: "K", 2: "Q", 3: "R", 4: "B", 5: "N", 6: ""}
+
         self.load_images()
         self.game_variables()
 
@@ -76,7 +83,7 @@ class Game:
             if scale[0] in load_options:
                 self.scale = scale[1]
                 break
-            self.scale = 4  # default
+            self.scale = 3  # default
         # test mode
         self.TEST_MODE = True if "TEST" in load_options else False
 
@@ -117,6 +124,8 @@ class Game:
         }  # Key = color, Value = -1 Not available | 0-7 column where en passant available
         self.current_turn = 1  # white always starts
         self.in_check = False
+        self.timer = [td(minutes=10), td(minutes=10)]
+        self.start_timer = dt.now()
         self.fifty_moves_counter = 0
         self.move_log = []
 
@@ -131,11 +140,11 @@ def load_init_config():
 
 
 def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
-    # Background
+    # Checkered Background
     for x in range(8):
         for y in range(8):
             if (x + y) % 2 == 0:
-                main_screen.blit(
+                screen.blit(
                     game.squareClearImage,
                     (
                         x * game.SQUARE_SIZE + game.X_OFFSET,
@@ -143,13 +152,59 @@ def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
                     ),
                 )
             else:
-                main_screen.blit(
+                screen.blit(
                     game.squareDarkImage,
                     (
                         x * game.SQUARE_SIZE + game.X_OFFSET,
                         y * game.SQUARE_SIZE + game.Y_OFFSET,
                     ),
                 )
+    # Coordinates
+    text = lambda i: game.FONTS["Text"].render(
+        i, True, game.COLORS["WHITE"], game.COLORS["GRAY"]
+    )
+    for n in range(1, 9):
+        txt = text(str(n))
+        textRect = txt.get_rect()
+        textRect.center = (
+            game.X_OFFSET - 15,
+            (n - 1) * game.SQUARE_SIZE + game.X_OFFSET + game.SQUARE_SIZE // 2,
+        )
+        screen.blit(txt, textRect)
+    for k, n in enumerate("abcdefgh"):
+        txt = text(n)
+        textRect = txt.get_rect()
+        textRect.center = (
+            game.SQUARE_SIZE * k + game.Y_OFFSET + game.SQUARE_SIZE // 2,
+            game.Y_OFFSET + game.MAIN_SCREEN_SIZE[0] + 15,
+        )
+        screen.blit(txt, textRect)
+
+    # Timers
+    # timer_enter = copy(game.timer[game.current_turn])
+    # game.timer[game.current_turn] = timer_enter - (dt.now() - game.start_timer)
+    text = lambda i: game.FONTS["Text"].render(
+        i, True, game.COLORS["WHITE"], game.COLORS["BLACK"]
+    )
+
+    timer = str(game.timer[0]).split(".")[0].split(":")
+    txt = text(f"{timer[1]}:{timer[2]}")
+    textRect = txt.get_rect()
+    textRect.center = (
+        game.X_OFFSET + game.MAIN_SCREEN_SIZE[0] - game.SQUARE_SIZE // 2,
+        game.Y_OFFSET // 2,
+    )
+    screen.blit(txt, textRect)
+
+    timer = str(game.timer[1]).split(".")[0].split(":")
+    txt = text(f"{timer[1]}:{timer[2]}")
+    textRect = txt.get_rect()
+    textRect.center = (
+        game.X_OFFSET + game.MAIN_SCREEN_SIZE[0] - game.SQUARE_SIZE // 2,
+        game.MAIN_SCREEN_SIZE[1] + game.Y_OFFSET * 3 // 2,
+    )
+    screen.blit(txt, textRect)
+
     # Fixed Pieces
     for x in range(8):
         for y in range(8):
@@ -159,11 +214,11 @@ def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
             )
             image_code = game.activeBoard[(x, y)]
             if image_code != 0:
-                main_screen.blit(game.pieceImages[image_code], coords)
+                screen.blit(game.pieceImages[image_code], coords)
     # Moving Piece
     if moving_piece_coords != (0, 0):
         moving_piece_coords = [i - game.SQUARE_SIZE // 2 for i in moving_piece_coords]
-        main_screen.blit(game.pieceImages[selected_piece], moving_piece_coords)
+        screen.blit(game.pieceImages[selected_piece], moving_piece_coords)
     pygame.display.update()
 
 
@@ -619,7 +674,8 @@ def main():
                 print("Moves:", game.move_log)
                 running = False
             game.current_turn *= -1
-            game.en_passant[game.current_turn] = -1  # clean e.p. opportunity
+            game.en_passant[game.current_turn] = -1  # delete e.p. opportunity
+            game.start_timer = dt.now()
 
     draw_board()
     while True:
@@ -634,7 +690,8 @@ game.activeBoard = load_init_config()
 
 # Init Screen
 os.environ["SDL_VIDEO_WINDOW_POS"] = "50,50"
-main_screen = pygame.display.set_mode(game.SCREEN_SIZE)
+screen = pygame.display.set_mode(game.SCREEN_SIZE)
+screen.fill(game.SCREEN_BG_COLOR)
 pygame.display.set_caption(game.SCREEN_CAPTION)
 pygame.display.set_icon(pygame.image.load(game.SCREEN_ICON))
 

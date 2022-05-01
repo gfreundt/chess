@@ -4,10 +4,13 @@
 # TODO: let player choose promoted piece
 # TODO: threefold repetition stalemate
 # TODO: 50-move rule stalemate
+# TODO> Timeout win - tie
 
 # NICE TO HAVE
 # TODO: Independent window - captured pieces
 # TODO: Save current board in txt file
+
+import random
 
 from PIL import Image
 import sys
@@ -111,7 +114,7 @@ class Game:
                 )
 
     def game_variables(self):
-        self.activeBoard = np.zeros((8, 8), dtype=int)
+        self.activeBoard = self.load_init_config()
         self.en_passant_capture_coords = (0, 0)
         self.castling_left = {
             -1: 1,
@@ -124,22 +127,21 @@ class Game:
         }  # Key = color, Value = -1 Not available | 0-7 column where en passant available
         self.current_turn = 1  # white always starts
         self.in_check = False
-        self.timer = [td(minutes=10), td(minutes=10)]
+        self.timer = {-1: td(minutes=10), 1: td(minutes=10)}
         self.start_timer = dt.now()
         self.fifty_moves_counter = 0
         self.move_log = []
 
+    def load_init_config(self):
+        filename = "chess_config.txt" if not self.TEST_MODE else "test_config.txt"
+        board = np.zeros((8, 8), dtype=int)
+        with open(filename, mode="r") as file:
+            for p, x, y in csv.reader(file):
+                board[int(x)][int(y)] = int(p)
+        return board
 
-def load_init_config():
-    filename = "chess_config.txt" if not game.TEST_MODE else "test_config.txt"
-    board = np.zeros((8, 8), dtype=int)
-    with open(filename, mode="r") as file:
-        for p, x, y in csv.reader(file):
-            board[int(x)][int(y)] = int(p)
-    return board
 
-
-def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
+def update_main_screen(moving_piece_coords=(0, 0), selected_piece=None):
     # Checkered Background
     for x in range(8):
         for y in range(8):
@@ -180,31 +182,6 @@ def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
         )
         screen.blit(txt, textRect)
 
-    # Timers
-    # timer_enter = copy(game.timer[game.current_turn])
-    # game.timer[game.current_turn] = timer_enter - (dt.now() - game.start_timer)
-    text = lambda i: game.FONTS["Text"].render(
-        i, True, game.COLORS["WHITE"], game.COLORS["BLACK"]
-    )
-
-    timer = str(game.timer[0]).split(".")[0].split(":")
-    txt = text(f"{timer[1]}:{timer[2]}")
-    textRect = txt.get_rect()
-    textRect.center = (
-        game.X_OFFSET + game.MAIN_SCREEN_SIZE[0] - game.SQUARE_SIZE // 2,
-        game.Y_OFFSET // 2,
-    )
-    screen.blit(txt, textRect)
-
-    timer = str(game.timer[1]).split(".")[0].split(":")
-    txt = text(f"{timer[1]}:{timer[2]}")
-    textRect = txt.get_rect()
-    textRect.center = (
-        game.X_OFFSET + game.MAIN_SCREEN_SIZE[0] - game.SQUARE_SIZE // 2,
-        game.MAIN_SCREEN_SIZE[1] + game.Y_OFFSET * 3 // 2,
-    )
-    screen.blit(txt, textRect)
-
     # Fixed Pieces
     for x in range(8):
         for y in range(8):
@@ -222,9 +199,39 @@ def draw_board(moving_piece_coords=(0, 0), selected_piece=None):
     pygame.display.update()
 
 
+def update_timers():
+    game.timer[game.current_turn] = game.timer_begin - (
+        dt.now() - game.start_turn_timestamp
+    )
+    text = lambda i: game.FONTS["Text"].render(
+        i, True, game.COLORS["WHITE"], game.COLORS["BLACK"]
+    )
+
+    timer = str(game.timer[-1]).split(".")[0].split(":")
+    txt = text(f"{timer[1]}:{timer[2]}")
+
+    textRect = txt.get_rect()
+    textRect.center = (
+        game.X_OFFSET + game.MAIN_SCREEN_SIZE[0] - game.SQUARE_SIZE // 2,
+        game.Y_OFFSET // 2,
+    )
+    screen.blit(txt, textRect)
+
+    timer = str(game.timer[1]).split(".")[0].split(":")
+    txt = text(f"{timer[1]}:{timer[2]}")
+    textRect = txt.get_rect()
+    textRect.center = (
+        game.X_OFFSET + game.MAIN_SCREEN_SIZE[0] - game.SQUARE_SIZE // 2,
+        game.MAIN_SCREEN_SIZE[1] + game.Y_OFFSET * 3 // 2,
+    )
+    screen.blit(txt, textRect)
+    pygame.display.update()
+
+
 def player_action():
     last_mouse_pos = pygame.mouse.get_pos()
     while True:
+        update_timers()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 quit()
@@ -607,12 +614,16 @@ def log_move(move):
 def main():
     running = True
     while running:
-        draw_board()
+        game.start_turn_timestamp = dt.now()
+        game.timer_begin = copy(game.timer[game.current_turn])
+
+        update_main_screen()
 
         # Action 1: Pick up piece
         possible_destinations = []
         selection = False
         while not selection:  # loops while waiting for BEGIN activity from player
+            # update_timers()
             action, square_clicked = player_action()
             if action == "ESC":
                 running = False
@@ -633,7 +644,7 @@ def main():
         while button_down:
             action, moving_piece_coords = player_action()
             if action == "MOV":
-                draw_board(moving_piece_coords, selected_piece)
+                update_main_screen(moving_piece_coords, selected_piece)
             elif action == "MBU":
                 button_down = False
 
@@ -675,18 +686,10 @@ def main():
                 running = False
             game.current_turn *= -1
             game.en_passant[game.current_turn] = -1  # delete e.p. opportunity
-            game.start_timer = dt.now()
-
-    draw_board()
-    while True:
-        action, moving_piece_coords = player_action()
-        if action == "ESC":
-            quit()
 
 
 # Game Variables
 game = Game()
-game.activeBoard = load_init_config()
 
 # Init Screen
 os.environ["SDL_VIDEO_WINDOW_POS"] = "50,50"
